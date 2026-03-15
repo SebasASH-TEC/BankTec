@@ -41,6 +41,7 @@ msgRetirar db 13,10,"xd$"
 msgConsultar db 13,10,"xd$"
 msgReporte db 13,10,"xd$"
 msgDesactivar db 13,10,"xd$"
+msgYaExiste db 13,10,"Error: El numero de cuenta ya esta registrado.$"
 
 
 inicio:
@@ -115,7 +116,10 @@ CrearCuenta proc    ; proc es codigo reutilizable, y debe terminar con el endp. 
     call print
 
     call LeerNumero
-    mov numeroCuenta, ax
+    mov numeroCuenta, ax 
+    
+    call BuscarCuenta
+    jnc cuenta_ya_existe ;salta si no hay acarreo o sea se encontro ya la cuenta
 
     mov bx,0
     mov bl,contadorCuentas
@@ -134,6 +138,11 @@ CrearCuenta proc    ; proc es codigo reutilizable, y debe terminar con el endp. 
     mov dx, offset msgGuardado
     call print
 
+    ret
+    
+cuenta_ya_existe:
+    mov dx, offset msgYaExiste
+    call print
     ret
 
 banco_lleno:
@@ -229,29 +238,33 @@ Depositar endp
 LeerNumero proc       ; Tiene que leer cada digito por aparte, porque sino la consola solo acepta un digito
                       ; Y para combinarlo uso la tecnica de multiplicar por 10 y sumarle el anterior, y asi escala unidades, decenas, etc
 
-    xor ax,ax        ; ax es numero final
-    xor bx,bx
+    xor bx,bx        ; bx va a ser el numero final porque leer el teclado destruye ax
 
 leer_loop:
 
     mov ah,01h
-    int 21h          ; ah, 01h lee el caracter
+    int 21h          ; ah, 01h lee el caracter y lo guarda en al
 
     cmp al,13        ; enter termina de escribir el numero (Es 13 en ascii)
     je fin_lectura
 
     sub al,'0'       ; Traduce del ascii a numero
-    mov bl,al        ; Es necesario porque el input del teclado asm lo ve como ascii
+    mov cl,al        ; Es necesario porque el input del teclado asm lo ve como ascii
                      ; Entonces digamos, ascii empieza en 48 (El 0 en ascii es 48), entonces al numero que me da el teclado
-    mov cx,10        ; Le resto 48, y con eso tengo el numero real
-    mul cx           ; AX = AX * 10
+    xor ch,ch        ; Le resto 48, limpio la parte alta, y con eso tengo el numero real guardado en cx
+    
+    mov ax,bx        ; Saco el numero que tenia acumulado de bx hacia ax
+    mov dx,10        ; 
+    mul dx           ; AX = AX * 10 
 
-    add ax,bx        ; AX = AX + digito
+    add ax,cx        ; AX = AX + digito nuevo (Que estaba esperando en cx)
+    mov bx,ax        ; Vuelvo a meter el numero ya sumado a bx
 
     jmp leer_loop
 
 fin_lectura:
 
+    mov ax,bx        ; Al final muevo todo de bx a ax 
     ret
 
 LeerNumero endp
