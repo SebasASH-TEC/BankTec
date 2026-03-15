@@ -236,7 +236,7 @@ Depositar endp
 
 
 LeerNumero proc       ; Tiene que leer cada digito por aparte, porque sino la consola solo acepta un digito
-                      ; Y para combinarlo uso la tecnica de multiplicar por 10 y sumarle el anterior, y asi escala unidades, decenas, etc
+                      ; Y para combinarlo la tecnica de multiplicar por 10 y sumarle el anterior, y asi escala unidades, decenas, etc
 
     xor bx,bx        ; bx va a ser el numero final porque leer el teclado destruye ax
 
