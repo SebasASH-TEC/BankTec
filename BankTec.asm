@@ -37,11 +37,12 @@ msgDepositoCuenta db 13,10,"Numero de cuenta: $"
 msgMonto db 13,10,"Monto a depositar: $"
 msgNoExiste db 13,10,"Cuenta no encontrada.$"
 msgDepositoOK db 13,10,"Deposito realizado.$"
-msgRetirar db 13,10,"xd$"
-msgConsultar db 13,10,"xd$"
 msgReporte db 13,10,"xd$"
 msgDesactivar db 13,10,"xd$"
-msgYaExiste db 13,10,"Error: El numero de cuenta ya esta registrado.$"
+msgYaExiste db 13,10,"El numero de cuenta ya esta registrado.$"
+msgMontoDebitar db 13,10,"Monto a retirar: $"
+msgDebitoOK db 13,10,"Retiro realizado.$"
+msgDebitoNo db 13,10,"No hay plata papi.$"
 
 
 inicio:
@@ -85,13 +86,11 @@ opcion2:
     jmp menu_loop
 
 opcion3:
-    mov dx, offset msgRetirar
-    call print
+    call Debitar
     jmp menu_loop
 
 opcion4:
-    mov dx, offset msgConsultar
-    call print
+    call ConsultarSaldo
     jmp menu_loop
 
 opcion5:
@@ -211,7 +210,7 @@ Depositar proc       ; La funcion esta es super basica, pero no se que restricci
     mov numeroCuenta,ax
 
     call BuscarCuenta
-    jc cuenta_no_existe
+    jc call CuentaNoExiste
 
     mov dx, offset msgMonto
     call print
@@ -227,13 +226,61 @@ Depositar proc       ; La funcion esta es super basica, pero no se que restricci
     call print
     ret
 
-cuenta_no_existe:
-    mov dx, offset msgNoExiste
+
+Depositar endp  
+
+Debitar proc          ; aqui trato de hacer la funcion de debitar, en teoria valida que exista la cuenta
+                      ; luego valida que el saldo no sea menor al monto que se quiera debitar
+    
+    mov dx, offset msgDepositoCuenta
+    call print
+
+    call LeerNumero
+    mov numeroCuenta,ax
+
+    call BuscarCuenta
+    jc call CuentaNoExiste
+
+    mov dx, offset msgMontoDebitar
+    call print
+
+    call LeerNumero
+    mov monto,ax
+    
+    mov ax,[si + SALDO]
+    cmp ax,monto                      ; si la plata que uno quiere sacar es menor al saldo da errorsh
+    jb saldo_no_hay
+    
+    sub ax,monto
+    mov [si + SALDO],ax
+
+    mov dx, offset msgDebitoOK
     call print
     ret
+    
+    saldo_no_hay:
+    mov dx, offset msgDebitoNo
+    call print
+    ret 
+       
+Debitar endp 
 
-Depositar endp
+ConsultarSaldo proc      ;no funciona  100
+    
+    mov dx, offset msgDepositoCuenta
+    call print
 
+    call LeerNumero
+    mov numeroCuenta,ax
+
+    call BuscarCuenta
+    jc call CuentaNoExiste
+    
+    ;mov dx,[si + SALDO]
+    ;call print
+    ret
+     
+ConsultarSaldo endp
 
 LeerNumero proc       ; Tiene que leer cada digito por aparte, porque sino la consola solo acepta un digito
                       ; Y para combinarlo la tecnica de multiplicar por 10 y sumarle el anterior, y asi escala unidades, decenas, etc
@@ -268,7 +315,15 @@ fin_lectura:
     ret
 
 LeerNumero endp
-
+                 
+                 
+CuentaNoExiste proc ; Manda el mensaje que no existe la cuenta Isaac estaria orgulloso de mi
+    
+    mov dx, offset msgNoExiste
+    call print
+    ret 
+      
+CuentaNoExiste endp      
 
 salir:
     mov ah,4Ch
