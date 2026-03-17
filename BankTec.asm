@@ -5,16 +5,21 @@ jmp inicio
 
 ;Constantes
 MAX_CUENTAS equ 10   ; Se utilizan los registros al, bl, etc para 8 bits, y ax, bx para 16 bits, no son intercambiables tan facil
-SIZE_CUENTA equ 4
+SIZE_CUENTA equ 24
 NUMERO equ 0
-SALDO  equ 2   
+SALDO  equ 2 
+NOMBRE equ 4  
            
 ;Variables           
 cuentas db MAX_CUENTAS * SIZE_CUENTA dup(0)
 contadorCuentas db 0
+nombreTemp db 20,0,20 dup(0)   ; buffer para leer nombre
+
+
 numeroCuenta dw ?
 monto dw ?
-indiceCuenta dw ?   
+indiceCuenta dw ?
+siDestino dw ?   
 
 
 
@@ -42,8 +47,12 @@ msgDesactivar db 13,10,"xd$"
 msgYaExiste db 13,10,"El numero de cuenta ya esta registrado.$"
 msgMontoDebitar db 13,10,"Monto a retirar: $"
 msgDebitoOK db 13,10,"Retiro realizado.$"
-msgDebitoNo db 13,10,"No hay plata papi.$"
-
+msgDebitoNo db 13,10,"No hay plata papi.$" 
+msgCuenta db 13,10,"Cuenta: $"
+msgNombreOut db 13,10,"Nombre: $"
+msgSaldoOut db 13,10,"Saldo: $"
+newline db 13,10,"$"
+msgNombre db 13,10,"Nombre de cuenta: $"
 
 inicio:
 
@@ -95,7 +104,7 @@ opcion4:
 
 opcion5:
     mov dx, offset msgReporte
-    call print
+    call ReporteGeneral
     jmp menu_loop
 
 opcion6:
@@ -105,43 +114,52 @@ opcion6:
 
 
 
-CrearCuenta proc    ; proc es codigo reutilizable, y debe terminar con el endp. Se refiere a que son funciones que otra 
-                    ; funcion puede llamar
+CrearCuenta proc
+
     mov al, contadorCuentas
     cmp al, MAX_CUENTAS
     je banco_lleno
 
+    ; pedir numero
     mov dx, offset msgCrear
     call print
 
     call LeerNumero
-    mov numeroCuenta, ax 
-    
-    call BuscarCuenta
-    jnc cuenta_ya_existe ;salta si no hay acarreo o sea se encontro ya la cuenta
+    mov numeroCuenta, ax
 
-    mov bx,0
-    mov bl,contadorCuentas
-    mov ax,SIZE_CUENTA
+    ; pedir nombre
+    mov dx, offset msgNombre
+    call print
+
+    call LeerString
+
+    ; calcular posicion
+    xor ax,ax
+    mov al,contadorCuentas
+
+    mov bx,SIZE_CUENTA
     mul bx
+
     mov si,ax
     add si,offset cuentas
 
+    ; guardar numero
     mov ax,numeroCuenta
     mov [si + NUMERO],ax
 
+    ; saldo = 0
     mov word ptr [si + SALDO],0
+
+    ; copiar nombre
+    lea di,[si + NOMBRE]
+    mov siDestino,di
+    call CopiarNombre
 
     inc contadorCuentas
 
     mov dx, offset msgGuardado
     call print
 
-    ret
-    
-cuenta_ya_existe:
-    mov dx, offset msgYaExiste
-    call print
     ret
 
 banco_lleno:
@@ -265,21 +283,50 @@ Debitar proc          ; aqui trato de hacer la funcion de debitar, en teoria val
        
 Debitar endp 
 
-ConsultarSaldo proc      ;no funciona  100
-    
-    mov dx, offset msgDepositoCuenta
+ConsultarSaldo proc
+
+    mov dx,offset msgDepositoCuenta
     call print
 
     call LeerNumero
     mov numeroCuenta,ax
 
     call BuscarCuenta
-    jc call CuentaNoExiste
-    
-    ;mov dx,[si + SALDO]
-    ;call print
+    jc cuenta_no_existe
+
+    mov bx,si   ; guardar base
+
+    ; ---- Cuenta ----
+    mov dx,offset msgCuenta
+    call print
+
+    mov ax,[bx + NUMERO]
+    call ImprimirNumero
+
+    ; ---- Nombre ----
+    mov dx,offset msgNombreOut
+    call print
+
+    lea dx,[bx + NOMBRE]
+    call print
+
+    ; ---- Saldo ----
+    mov dx,offset msgSaldoOut
+    call print
+
+    mov ax,[bx + SALDO]
+    call ImprimirDinero
+
+    mov dx,offset newline
+    call print
+
     ret
-     
+
+cuenta_no_existe:
+    mov dx,offset msgNoExiste
+    call print
+    ret
+
 ConsultarSaldo endp
 
 LeerNumero proc       ; Tiene que leer cada digito por aparte, porque sino la consola solo acepta un digito
@@ -314,7 +361,100 @@ fin_lectura:
     mov ax,bx        ; Al final muevo todo de bx a ax 
     ret
 
-LeerNumero endp
+LeerNumero endp  
+
+ImprimirNumero proc
+
+    push ax
+    push bx
+    push cx
+    push dx
+
+    mov cx,0        ; Contador de digitos
+    mov bx,10
+
+convertir:
+
+    xor dx,dx       ; Limpiar DX para division, asi evito errores
+    div bx          ; AX / 10
+
+    push dx         ; Guardar residuo (digito)
+    inc cx
+
+    cmp ax,0
+    jne convertir
+
+imprimir:
+
+    pop dx
+    add dl,'0'      ; Numero a ascii, como antes
+
+    mov ah,02h
+    int 21h
+
+    loop imprimir
+
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+    ret
+
+ImprimirNumero endp 
+
+ImprimirDinero proc        ; La utilizo para interpetar los numeros con decimales
+                           ; Esta funcion interpreta 355 como 3.55, e ImprimirNumero como 355
+    push ax                ; Por eso uso esta para dinero y la otra para num de cuenta
+    push bx
+    push dx
+
+    mov bx,100
+    xor dx,dx
+    div bx        ; AX = parte entera, DX = decimales
+    mov cx,dx
+    ; imprimir parte entera
+    push dx       ; guardar decimales
+    call ImprimirNumero
+
+    ; imprimir punto
+    mov dl,'.'
+    mov ah,02h
+    int 21h
+
+    pop dx        ; recuperar decimales
+
+    ; imprimir decimales (2 digitos)
+    mov ax,dx
+
+    cmp ax,10
+    jae decimales
+
+    ; si es menor a 10 ? imprimir 0 adelante
+    mov dl,'0'
+    mov ah,02h
+    int 21h
+
+decimales:
+    call ImprimirNumero
+
+    pop dx
+    pop bx
+    pop ax
+
+    ret
+
+ImprimirDinero endp
+
+LeerString proc
+
+    mov dx,offset nombreTemp
+    mov ah,0Ah
+    int 21h
+
+    ret
+
+LeerString endp
                  
                  
 CuentaNoExiste proc ; Manda el mensaje que no existe la cuenta Isaac estaria orgulloso de mi
@@ -323,7 +463,99 @@ CuentaNoExiste proc ; Manda el mensaje que no existe la cuenta Isaac estaria org
     call print
     ret 
       
-CuentaNoExiste endp      
+CuentaNoExiste endp 
+
+CopiarNombre proc
+
+    push si
+    push di
+    push cx
+
+    lea si,nombreTemp+2   ; origen
+    mov di,siDestino      ; destino (lo vamos a pasar en DI)
+    mov cl,nombreTemp+1   ; longitud
+
+copiar_loop:
+
+    cmp cl,0
+    je fin
+
+    mov al,[si]
+    mov [di],al
+
+    inc si
+    inc di
+    dec cl
+    jmp copiar_loop
+
+fin:
+
+    ; opcional: poner terminador $
+    mov al,'$'
+    mov [di],al
+
+    pop cx
+    pop di
+    pop si
+
+    ret
+
+CopiarNombre endp
+
+ImprimirNombre proc
+
+    ; SI debe apuntar al inicio del nombre
+    mov dx,si
+    call print
+
+    ret
+
+ImprimirNombre endp
+
+ReporteGeneral proc
+
+    xor cx,cx
+    mov cl,contadorCuentas
+
+    cmp cx,0
+    je fin
+
+    mov si,offset cuentas
+
+loop_cuentas:
+
+    ; Printea el num de cuenta
+    mov dx,offset msgCuenta
+    call print
+
+    mov ax,[si + NUMERO]
+    call ImprimirNumero
+
+    ; El nombre
+    mov dx,offset msgNombreOut
+    call print
+
+    lea di,[si + NOMBRE]
+    mov dx,di
+    call print
+
+    ; Y el saldo
+    mov dx,offset msgSaldoOut
+    call print
+
+    mov ax,[si + SALDO]
+    call ImprimirDinero
+
+    mov dx,offset newline
+    call print
+
+    add si,SIZE_CUENTA
+    loop loop_cuentas
+
+final:
+    ret
+
+ReporteGeneral endp
 
 salir:
     mov ah,4Ch
