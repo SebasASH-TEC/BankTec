@@ -5,10 +5,11 @@ jmp inicio
 
 ;Constantes
 MAX_CUENTAS equ 10   ; Se utilizan los registros al, bl, etc para 8 bits, y ax, bx para 16 bits, no son intercambiables tan facil
-SIZE_CUENTA equ 24
+SIZE_CUENTA equ 25
 NUMERO equ 0
 SALDO  equ 2 
-NOMBRE equ 4  
+NOMBRE equ 4
+ESTADO equ 24  
            
 ;Variables           
 cuentas db MAX_CUENTAS * SIZE_CUENTA dup(0)
@@ -30,7 +31,7 @@ menu db 13,10,"===== SISTEMA BANCARIO =====",13,10
      db "3. Retirar",13,10
      db "4. Consultar saldo",13,10
      db "5. Reporte general",13,10
-     db "6. Desactivar cuenta",13,10
+     db "6. Desactivar / Activar cuenta",13,10
      db "7. Salir",13,10
      db "Seleccione una opcion: $"
 
@@ -53,6 +54,9 @@ msgNombreOut db 13,10,"Nombre: $"
 msgSaldoOut db 13,10,"Saldo: $"
 newline db 13,10,"$"
 msgNombre db 13,10,"Nombre de cuenta: $"
+msgActivado db 13,10,"Cuenta Activada $" 
+msgDesactivado db 13,10,"Cuenta Desactivada $"
+msgCuentaDenegada db 13,10,"Cuenta actualmente desactivada $"
 
 inicio:
 
@@ -108,8 +112,7 @@ opcion5:
     jmp menu_loop
 
 opcion6:
-    mov dx, offset msgDesactivar
-    call print
+    call ActivarDesactivarCuenta
     jmp menu_loop
 
 
@@ -149,6 +152,9 @@ CrearCuenta proc
 
     ; saldo = 0
     mov word ptr [si + SALDO],0
+    
+    ;activar cuenta
+    mov byte ptr [si+ ESTADO], 1
 
     ; copiar nombre
     lea di,[si + NOMBRE]
@@ -228,7 +234,10 @@ Depositar proc       ; La funcion esta es super basica, pero no se que restricci
     mov numeroCuenta,ax
 
     call BuscarCuenta
-    jc call CuentaNoExiste
+    jc call CuentaNoExiste 
+    
+    call ComprobarEstado
+    jc call CuentaDesactivada
 
     mov dx, offset msgMonto
     call print
@@ -245,7 +254,50 @@ Depositar proc       ; La funcion esta es super basica, pero no se que restricci
     ret
 
 
-Depositar endp  
+Depositar endp
+
+ComprobarEstado proc    ;verifica el estado de la cuenta para permitir operaciones en la cuenta
+                    
+    cmp byte ptr [si + ESTADO], 0
+    je cuenta_denegada    
+    
+    clc
+    ret
+    
+cuenta_denegada:
+    stc
+    ret                   
+                    
+ComprobarEstado endp
+
+ActivarDesactivarCuenta proc ;desactiva la cuenta si ya esta activada y la activa si estaba desactivada
+    
+    mov dx, offset msgDepositoCuenta
+    call print
+
+    call LeerNumero
+    mov numeroCuenta,ax
+
+    call BuscarCuenta
+    jc call CuentaNoExiste
+    
+    cmp byte ptr [si + ESTADO], 0
+    je activar_cuenta
+    
+    mov byte ptr [si + ESTADO], 0
+    mov dx, offset msgDesactivado
+    call print
+    ret
+    
+activar_cuenta: 
+
+    mov byte ptr[si + ESTADO], 1
+    mov dx, offset msgActivado   
+    
+    call print 
+    ret
+    
+ActivarDesactivarCuenta endp
 
 Debitar proc          ; aqui trato de hacer la funcion de debitar, en teoria valida que exista la cuenta
                       ; luego valida que el saldo no sea menor al monto que se quiera debitar
@@ -258,6 +310,9 @@ Debitar proc          ; aqui trato de hacer la funcion de debitar, en teoria val
 
     call BuscarCuenta
     jc call CuentaNoExiste
+    
+    call ComprobarEstado
+    jc call CuentaDesactivada
 
     mov dx, offset msgMontoDebitar
     call print
@@ -292,7 +347,10 @@ ConsultarSaldo proc
     mov numeroCuenta,ax
 
     call BuscarCuenta
-    jc cuenta_no_existe
+    jc cuenta_no_existe 
+    
+    call ComprobarEstado
+    jc call CuentaDesactivada
 
     mov bx,si   ; guardar base
 
@@ -463,7 +521,15 @@ CuentaNoExiste proc ; Manda el mensaje que no existe la cuenta Isaac estaria org
     call print
     ret 
       
-CuentaNoExiste endp 
+CuentaNoExiste endp
+
+CuentaDesactivada proc 
+    
+    mov dx, offset msgCuentaDenegada
+    call print
+    ret               
+    
+CuentaDesactivada endp
 
 CopiarNombre proc
 
