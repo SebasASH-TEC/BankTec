@@ -14,7 +14,14 @@ ESTADO equ 24
 ;Variables           
 cuentas db MAX_CUENTAS * SIZE_CUENTA dup(0)
 contadorCuentas db 0
-nombreTemp db 20,0,20 dup(0)   ; buffer para leer nombre
+contadorCuentasActivas db 0
+contadorCuentasInactivas db 0
+saldoBanco dw 0
+nombreTemp db 20,0,20 dup(0)   ; buffer para leer nombre  
+cuentaMayor dw 0        ; Guardará la dirección de la cuenta con más dinero
+cuentaMenor dw 0        ; Guardará la dirección de la cuenta con menos dinero
+saldoMayor  dw 0
+saldoMenor  dw 0
 
 
 numeroCuenta dw ?
@@ -57,6 +64,12 @@ msgNombre db 13,10,"Nombre de cuenta: $"
 msgActivado db 13,10,"Cuenta Activada $" 
 msgDesactivado db 13,10,"Cuenta Desactivada $"
 msgCuentaDenegada db 13,10,"Cuenta actualmente desactivada $"
+
+msgCuentasActivas db 13,10,"Total de cuentas activas: $"      
+msgCuentasInactivas db 13,10,"Total de cuentas inactivas: $"
+msgSaldoBanco db 13,10,"Saldo total del banco: $"
+msgSaldoMayor db 13,10,"La cuenta con mayor saldo es: $"
+msgSaldoMenor db 13,10,"La cuenta con menor saldo es: $"
 
 inicio:
 
@@ -107,7 +120,6 @@ opcion4:
     jmp menu_loop
 
 opcion5:
-    mov dx, offset msgReporte
     call ReporteGeneral
     jmp menu_loop
 
@@ -129,6 +141,10 @@ CrearCuenta proc
 
     call LeerNumero
     mov numeroCuenta, ax
+    
+    ;Comprobacion de numero
+    call BuscarCuenta
+    jnc CuentaRepetida
 
     ; pedir nombre
     mov dx, offset msgNombre
@@ -153,8 +169,10 @@ CrearCuenta proc
     ; saldo = 0
     mov word ptr [si + SALDO],0
     
+    
     ;activar cuenta
     mov byte ptr [si+ ESTADO], 1
+    inc ContadorCuentasActivas
 
     ; copiar nombre
     lea di,[si + NOMBRE]
@@ -174,6 +192,14 @@ banco_lleno:
     ret
 
 CrearCuenta endp
+
+
+CuentaRepetida proc
+    mov dx, offset msgYaExiste
+    call print
+    ret           
+    
+CuentaRepetida endp
 
 
 
@@ -247,6 +273,7 @@ Depositar proc       ; La funcion esta es super basica, pero no se que restricci
 
     mov ax,[si + SALDO]
     add ax,monto
+    add saldoBanco,ax
     mov [si + SALDO],ax
 
     mov dx, offset msgDepositoOK
@@ -287,6 +314,8 @@ ActivarDesactivarCuenta proc ;desactiva la cuenta si ya esta activada y la activ
     mov byte ptr [si + ESTADO], 0
     mov dx, offset msgDesactivado
     call print
+    inc ContadorCuentasInactivas
+    dec ContadorCuentasActivas    
     ret
     
 activar_cuenta: 
@@ -294,7 +323,9 @@ activar_cuenta:
     mov byte ptr[si + ESTADO], 1
     mov dx, offset msgActivado   
     
-    call print 
+    call print
+    inc ContadorCuentasActivas
+    dec ContadorCuentasInactivas
     ret
     
 ActivarDesactivarCuenta endp
@@ -324,7 +355,8 @@ Debitar proc          ; aqui trato de hacer la funcion de debitar, en teoria val
     cmp ax,monto                      ; si la plata que uno quiere sacar es menor al saldo da errorsh
     jb saldo_no_hay
     
-    sub ax,monto
+    sub ax,monto 
+    sub saldoBanco,ax
     mov [si + SALDO],ax
 
     mov dx, offset msgDebitoOK
@@ -387,7 +419,7 @@ cuenta_no_existe:
 
 ConsultarSaldo endp
 
-LeerNumero proc       ; Tiene que leer cada digito por aparte, porque sino la consola solo acepta un digito
+LeerNumero proc        ; Tiene que leer cada digito por aparte, porque sino la consola solo acepta un digito
                       ; Y para combinarlo la tecnica de multiplicar por 10 y sumarle el anterior, y asi escala unidades, decenas, etc
 
     xor bx,bx        ; bx va a ser el numero final porque leer el teclado destruye ax
@@ -527,7 +559,7 @@ CuentaDesactivada proc
     
     mov dx, offset msgCuentaDenegada
     call print
-    ret               
+    ret                
     
 CuentaDesactivada endp
 
@@ -577,6 +609,100 @@ ImprimirNombre proc
     ret
 
 ImprimirNombre endp
+       
+       
+       
+BuscarSaldoMayor proc
+    xor cx, cx
+    mov cl, contadorCuentas
+    jcxz fin_mayor
+
+    mov si, offset cuentas
+    mov saldoMayor, 0  
+
+loop_mayor:
+    mov ax, [si + SALDO]
+    cmp ax, saldoMayor
+    jbe siguiente_mayor      
+    
+    mov saldoMayor, ax
+    mov cuentaMayor, si
+
+siguiente_mayor:
+    add si, SIZE_CUENTA
+    loop loop_mayor
+
+    mov dx, offset msgSaldoMayor
+    call print
+    
+    mov bx, cuentaMayor   
+    call ImprimirCuentaBusqueda
+
+fin_mayor:
+    ret
+BuscarSaldoMayor endp
+                        
+    
+                        
+                        
+BuscarSaldoMenor proc
+    xor cx, cx
+    mov cl, contadorCuentas
+    jcxz fin_menor
+
+    mov si, offset cuentas
+    mov saldoMenor, 0FFFFh;numero mas alto posible
+
+loop_menor:
+    mov ax, [si + SALDO]
+    cmp ax, saldoMenor
+    jae siguiente_menor      
+    
+    mov saldoMenor, ax
+    mov cuentaMenor, si
+
+siguiente_menor:
+    add si, SIZE_CUENTA
+    loop loop_menor
+
+    mov dx, offset msgSaldoMenor
+    call print
+    
+    mov bx, cuentaMenor  
+    call ImprimirCuentaBusqueda
+
+fin_menor:
+    ret
+BuscarSaldoMenor endp 
+
+
+
+ImprimirCuentaBusqueda proc
+    ; Cuenta
+    mov dx, offset msgCuenta
+    call print
+    mov ax, [bx + NUMERO]
+    call ImprimirNumero
+
+    ;Nombre
+    mov dx, offset msgNombreOut
+    call print
+    lea dx, [bx + NOMBRE]
+    call print
+
+    ;Saldo 
+    mov dx, offset msgSaldoOut
+    call print
+    mov ax, [bx + SALDO]
+    call ImprimirDinero
+    
+    mov dx, offset newline
+    call print
+    ret
+ImprimirCuentaBusqueda endp
+
+
+
 
 ReporteGeneral proc
 
@@ -584,11 +710,13 @@ ReporteGeneral proc
     mov cl,contadorCuentas
 
     cmp cx,0
-    je fin
+    je final_rep
 
     mov si,offset cuentas
 
 loop_cuentas:
+    
+    push cx ;Guarda el contador para que no sea modificado en otras llamadas
 
     ; Printea el num de cuenta
     mov dx,offset msgCuenta
@@ -616,9 +744,39 @@ loop_cuentas:
     call print
 
     add si,SIZE_CUENTA
+    pop cx  ;Recupera el contador guardado antes de las llamadas
     loop loop_cuentas
+    
+    ;Datos generales
+    
+    ;Cuentas activas
+    mov dx, offset msgCuentasActivas
+    call print
+    
+    xor ax, ax ;Limpia ax
+    mov al, ContadorCuentasActivas
+    call ImprimirNumero
+    
+    ;Cuentas inactivas
+    mov dx, offset msgCuentasInactivas
+    call print
+    
+    xor ax, ax ;Limpia ax
+    mov al, ContadorCuentasInactivas
+    call ImprimirNumero
+    
+    ;Saldo del banco
+    mov dx, offset msgSaldoBanco
+    call print
+    
+    mov ax, saldoBanco
+    call ImprimirNumero
+    
+    ;Cuentas mayor y menor
+    call BuscarSaldoMayor
+    call BuscarSaldoMenor
 
-final:
+final_rep:
     ret
 
 ReporteGeneral endp
