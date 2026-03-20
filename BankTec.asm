@@ -5,21 +5,21 @@ jmp inicio
 
 ;Constantes
 MAX_CUENTAS equ 10   ; Se utilizan los registros al, bl, etc para 8 bits, y ax, bx para 16 bits, no son intercambiables tan facil
-SIZE_CUENTA equ 25
-NUMERO equ 0
-SALDO  equ 2 
-NOMBRE equ 4
-ESTADO equ 24  
+SIZE_CUENTA equ 25   ; Tamano en bytes de cada registro de cuenta
+NUMERO equ 0         ; Offset local para variable Word (2 bytes)
+SALDO  equ 2         ; Offset local para variable Word (2 bytes)
+NOMBRE equ 4         ; Offset local para variable String (20 bytes)
+ESTADO equ 24        ; Offset local para variable Byte (1 byte, booleano)
            
 ;Variables           
-cuentas db MAX_CUENTAS * SIZE_CUENTA dup(0)
+cuentas db MAX_CUENTAS * SIZE_CUENTA dup(0) ; Reserva contigua de memoria para el arreglo de estructuras
 contadorCuentas db 0
 contadorCuentasActivas db 0
 contadorCuentasInactivas db 0
-saldoBanco dw 0
+saldoBanco dw 0      ; Acumulador global de fondos
 nombreTemp db 20,0,20 dup(0)   ; buffer para leer nombre  
-cuentaMayor dw 0        ; Guardará la dirección de la cuenta con más dinero
-cuentaMenor dw 0        ; Guardará la dirección de la cuenta con menos dinero
+cuentaMayor dw 0        ; Guardara la direccion de la cuenta con mas dinero
+cuentaMenor dw 0        ; Guardara la direccion de la cuenta con menos dinero
 saldoMayor  dw 0
 saldoMenor  dw 0
 
@@ -78,6 +78,7 @@ menu_loop:
     call MostrarMenu
     call LeerOpcion
 
+    ; Enrutamiento basado en el caracter ASCII recibido en AL
     cmp al,'1'
     je opcion1
 
@@ -133,7 +134,7 @@ CrearCuenta proc
 
     mov al, contadorCuentas
     cmp al, MAX_CUENTAS
-    je banco_lleno
+    je banco_lleno       ; Control de desbordamiento de memoria reservada
 
     ; pedir numero
     mov dx, offset msgCrear
@@ -144,7 +145,7 @@ CrearCuenta proc
     
     ;Comprobacion de numero
     call BuscarCuenta
-    jnc CuentaRepetida
+    jnc CuentaRepetida   ; La subrutina limpia Carry (CF=0) si detecta colision de IDs
 
     ; pedir nombre
     mov dx, offset msgNombre
@@ -159,12 +160,12 @@ CrearCuenta proc
     mov bx,SIZE_CUENTA
     mul bx
 
-    mov si,ax
+    mov si,ax            ; Algoritmo de posicionamiento: Direccion Base + (Indice * Tamano Registro)
     add si,offset cuentas
 
     ; guardar numero
     mov ax,numeroCuenta
-    mov [si + NUMERO],ax
+    mov [si + NUMERO],ax ; Inyeccion de datos en los offsets correspondientes de la estructura actual
 
     ; saldo = 0
     mov word ptr [si + SALDO],0
@@ -242,11 +243,11 @@ buscar_loop:
     loop buscar_loop   ; Loop es un cmp cx con 0, luego dec cx en -1, y luego hace jmp a lo que usted le especifique
 
 no_encontrada:
-    stc
+    stc                  ; Enciende Carry Flag (CF=1) como senal de error/ausencia
     ret
 
 encontrada:
-    clc
+    clc                  ; Apaga Carry Flag (CF=0) como senal de busqueda exitosa
     ret
 
 BuscarCuenta endp
@@ -260,7 +261,7 @@ Depositar proc       ; La funcion esta es super basica, pero no se que restricci
     mov numeroCuenta,ax
 
     call BuscarCuenta
-    jc call CuentaNoExiste 
+    jc call CuentaNoExiste ; Delega control si CF=1
     
     call ComprobarEstado
     jc call CuentaDesactivada
@@ -271,7 +272,7 @@ Depositar proc       ; La funcion esta es super basica, pero no se que restricci
     call LeerNumero
     mov monto,ax
 
-    mov ax,[si + SALDO]
+    mov ax,[si + SALDO]  ; Modificacion directa en el bloque de memoria
     add ax,monto
     add saldoBanco,ax
     mov [si + SALDO],ax
@@ -311,6 +312,7 @@ ActivarDesactivarCuenta proc ;desactiva la cuenta si ya esta activada y la activ
     cmp byte ptr [si + ESTADO], 0
     je activar_cuenta
     
+    ; Transicion de estado: Activa -> Inactiva
     mov byte ptr [si + ESTADO], 0
     mov dx, offset msgDesactivado
     call print
@@ -320,6 +322,7 @@ ActivarDesactivarCuenta proc ;desactiva la cuenta si ya esta activada y la activ
     
 activar_cuenta: 
 
+    ; Transicion de estado: Inactiva -> Activa
     mov byte ptr[si + ESTADO], 1
     mov dx, offset msgActivado   
     
@@ -353,7 +356,7 @@ Debitar proc          ; aqui trato de hacer la funcion de debitar, en teoria val
     
     mov ax,[si + SALDO]
     cmp ax,monto                      ; si la plata que uno quiere sacar es menor al saldo da errorsh
-    jb saldo_no_hay
+    jb saldo_no_hay                   ; Proteccion contra desbordamiento negativo
     
     sub ax,monto 
     sub saldoBanco,ax
@@ -384,7 +387,7 @@ ConsultarSaldo proc
     call ComprobarEstado
     jc call CuentaDesactivada
 
-    mov bx,si   ; guardar base
+    mov bx,si   ; guardar base (Resguardo del puntero base para no corromperlo)
 
     ; ---- Cuenta ----
     mov dx,offset msgCuenta
@@ -466,7 +469,7 @@ ImprimirNumero proc
 convertir:
 
     xor dx,dx       ; Limpiar DX para division, asi evito errores
-    div bx          ; AX / 10
+    div bx          ; AX / 10 (Algoritmo de extraccion de digitos mediante division por modulo base 10)
 
     push dx         ; Guardar residuo (digito)
     inc cx
@@ -508,7 +511,7 @@ ImprimirDinero proc        ; La utilizo para interpetar los numeros con decimale
     call ImprimirNumero
 
     ; imprimir punto
-    mov dl,'.'
+    mov dl,'.'       ; Insercion manual de caracter separador
     mov ah,02h
     int 21h
 
@@ -520,7 +523,7 @@ ImprimirDinero proc        ; La utilizo para interpetar los numeros con decimale
     cmp ax,10
     jae decimales
 
-    ; si es menor a 10 ? imprimir 0 adelante
+    ; si es menor a 10 ? imprimir 0 adelante (Manejo de padding para evitar anomalias visuales)
     mov dl,'0'
     mov ah,02h
     int 21h
@@ -539,7 +542,7 @@ ImprimirDinero endp
 LeerString proc
 
     mov dx,offset nombreTemp
-    mov ah,0Ah
+    mov ah,0Ah       ; Captura en buffer estructurado administrado por DOS
     int 21h
 
     ret
@@ -569,7 +572,7 @@ CopiarNombre proc
     push di
     push cx
 
-    lea si,nombreTemp+2   ; origen
+    lea si,nombreTemp+2   ; origen (Ignora bytes de metadatos del buffer DOS)
     mov di,siDestino      ; destino (lo vamos a pasar en DI)
     mov cl,nombreTemp+1   ; longitud
 
@@ -589,7 +592,7 @@ copiar_loop:
 fin:
 
     ; opcional: poner terminador $
-    mov al,'$'
+    mov al,'$'            ; Parche de seguridad para interrupcion de impresion de cadenas
     mov [di],al
 
     pop cx
@@ -626,7 +629,7 @@ loop_mayor:
     jbe siguiente_mayor      
     
     mov saldoMayor, ax
-    mov cuentaMayor, si
+    mov cuentaMayor, si      ; Guardado del puntero hacia la estructura contenedora
 
 siguiente_mayor:
     add si, SIZE_CUENTA
@@ -659,7 +662,7 @@ loop_menor:
     jae siguiente_menor      
     
     mov saldoMenor, ax
-    mov cuentaMenor, si
+    mov cuentaMenor, si      ; Guardado del puntero hacia la estructura contenedora
 
 siguiente_menor:
     add si, SIZE_CUENTA
@@ -678,7 +681,7 @@ BuscarSaldoMenor endp
 
 
 ImprimirCuentaBusqueda proc
-    ; Cuenta
+    ; Cuenta (Modulo reutilizable para extraccion e impresion serializada)
     mov dx, offset msgCuenta
     call print
     mov ax, [bx + NUMERO]
@@ -716,7 +719,7 @@ ReporteGeneral proc
 
 loop_cuentas:
     
-    push cx ;Guarda el contador para que no sea modificado en otras llamadas
+    push cx ;Guarda el contador para que no sea modificado en otras llamadas (Blindaje del contador de iteraciones global)
 
     ; Printea el num de cuenta
     mov dx,offset msgCuenta
@@ -747,7 +750,7 @@ loop_cuentas:
     pop cx  ;Recupera el contador guardado antes de las llamadas
     loop loop_cuentas
     
-    ;Datos generales
+    ;Datos generales (Impresion secuencial de estadisticas acumuladas)
     
     ;Cuentas activas
     mov dx, offset msgCuentasActivas
@@ -782,5 +785,5 @@ final_rep:
 ReporteGeneral endp
 
 salir:
-    mov ah,4Ch
+    mov ah,4Ch       ; Restitucion del control de ejecucion al SO huesped
     int 21h
