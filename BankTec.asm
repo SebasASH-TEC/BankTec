@@ -16,7 +16,7 @@ cuentas db MAX_CUENTAS * SIZE_CUENTA dup(0) ; Reserva contigua de memoria para e
 contadorCuentas db 0
 contadorCuentasActivas db 0
 contadorCuentasInactivas db 0
-saldoBanco dw 0      ; Acumulador global de fondos
+saldoBanco dd 0      ; Acumulador global de fondos
 nombreTemp db 20,0,20 dup(0)   ; buffer para leer nombre  
 cuentaMayor dw 0        ; Guardara la direccion de la cuenta con mas dinero
 cuentaMenor dw 0        ; Guardara la direccion de la cuenta con menos dinero
@@ -773,7 +773,7 @@ loop_cuentas:
     call print
     
     mov ax, saldoBanco
-    call ImprimirNumero
+    call ImprimirDinero
     
     ;Cuentas mayor y menor
     call BuscarSaldoMayor
